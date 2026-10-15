@@ -101,6 +101,21 @@ tag_exists_in_registry() {
     fi
 }
 
+# Succeeds only when the locally built image carries a non-empty io.backstage.dynamic-packages
+# annotation. The CLI exits 0 even when staging a plugin fails, and then annotates an empty
+# list, so the exit code alone cannot tell a broken package from a good one.
+dynamic_packages_annotation_ok() {
+    local ref="$1"
+    local plugin_name="$2"
+    local annotation
+    annotation="$("${INPUTS_CONTAINER_BUILD_TOOL}" image inspect --format '{{ index .Annotations "io.backstage.dynamic-packages" }}' "${ref}" 2>/dev/null)" || annotation=""
+    if [[ -z "${annotation}" ]] || ! printf '%s' "${annotation}" | base64 -d 2>/dev/null | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+        echo "::error title=Missing dynamic-packages annotation::${plugin_name}: ${ref} has no readable io.backstage.dynamic-packages annotation or an empty list"
+        return 1
+    fi
+    return 0
+}
+
 # Packages the plugin exported into the current directory's ./dist-dynamic into a container
 # image, and pushes it if INPUTS_PUSH_CONTAINER_IMAGE is true. On success, appends the image
 # ref to the shared "images" array; on failure, appends $pluginPath to the array named by
@@ -128,7 +143,9 @@ package_and_push_plugin() {
 
     echo "========== Packaging Container ${plugin_container_tag} =========="
     if run_cli "${PACKAGE_COMMAND[@]}" --tag "${plugin_container_tag}"; then
-        if [[ "${INPUTS_PUSH_CONTAINER_IMAGE}" == "true" ]]
+        if ! dynamic_packages_annotation_ok "${plugin_container_tag}" "${plugin_name}"; then
+            error_array_ref+=("${pluginPath}")
+        elif [[ "${INPUTS_PUSH_CONTAINER_IMAGE}" == "true" ]]
         then
             echo "========== Publishing Container ${plugin_container_tag} =========="
             if ${INPUTS_CONTAINER_BUILD_TOOL} push "$plugin_container_tag"; then
