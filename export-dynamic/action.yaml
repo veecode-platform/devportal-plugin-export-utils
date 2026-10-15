@@ -110,6 +110,8 @@ runs:
       env:
         NPM_CONFIG_ignore-scripts: "true"
         YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
+        # hardlinks-local nmMode makes the CLI's npm pack + tar staging fail; the plugin then ships with an empty annotation.
+        YARN_NM_MODE: "classic"
         INPUTS_DESTINATION: "${{ inputs.destination }}"
         INPUTS_JANUS_CLI_VERSION: "${{ inputs.janus-cli-version }}"
         INPUTS_CLI_PACKAGE: "${{ inputs.cli-package }}"
