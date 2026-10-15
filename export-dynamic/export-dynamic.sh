@@ -109,7 +109,7 @@ dynamic_packages_annotation_ok() {
     local plugin_name="$2"
     local annotation
     annotation="$("${INPUTS_CONTAINER_BUILD_TOOL}" image inspect --format '{{ index .Annotations "io.backstage.dynamic-packages" }}' "${ref}" 2>/dev/null)" || annotation=""
-    if ! printf '%s' "${annotation}" | base64 -d 2>/dev/null | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+    if [[ -z "${annotation}" ]] || ! printf '%s' "${annotation}" | base64 -d 2>/dev/null | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
         echo "::error title=Missing dynamic-packages annotation::${plugin_name}: ${ref} has no readable io.backstage.dynamic-packages annotation or an empty list"
         return 1
     fi
