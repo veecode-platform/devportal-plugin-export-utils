@@ -164,7 +164,7 @@ jobs:
   export:
     name: Export
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     env:
       NODE_OPTIONS: --max-old-space-size=8192
