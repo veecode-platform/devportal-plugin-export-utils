@@ -46,13 +46,12 @@ fi
 # config.d.ts files importing source-only paths (e.g. backstage-plugin-theme <=0.14.9)
 # and broke previously-green exports. Installing the pin alongside the CLI makes npm
 # dedupe the CLI's own dependency to the pinned version.
-# webpack and schema-utils keep a single webpack copy in the tree: the CLI needs
-# webpack ~5.105.0, and schema-utils >=4.8.0 (2026-10-18) peers on webpack ^5.112.0, so
-# npm nested a second webpack. With two copies the Scalprum build stops without an error,
-# the CLI exits 0, and frontend plugins ship an empty dist-scalprum.
+# schema-utils >=4.8.0 (2026-10-18) peers on webpack ^5.112.0, which makes npm add a
+# second webpack next to the one the CLI pins. With two copies the Scalprum build stops
+# without an error, the CLI exits 0, and frontend plugins ship an empty dist-scalprum.
 if [[ "${INPUTS_CLI_PACKAGE}" == "@red-hat-developer-hub/cli" ]]
 then
-    INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes --package=@backstage/config-loader@1.10.12 --package=webpack@5.105.4 --package=schema-utils@4.7.0 --package=${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION} -- rhdh-cli"}
+    INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes --package=@backstage/config-loader@1.10.12 --package=schema-utils@4.7.0 --package=${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION} -- rhdh-cli"}
 else
     INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes ${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION}"}
 fi

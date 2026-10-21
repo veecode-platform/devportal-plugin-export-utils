@@ -90,10 +90,10 @@ jobs:
           [[ -f "${distDynamic}/dist-scalprum/plugin-manifest.json" ]] || fail "${distDynamic}/dist-scalprum/plugin-manifest.json not found"
 
           archive=$(ls "$RUNNER_TEMP"/archives/*.tgz)
-          tar -tzf "$archive" | grep -qx 'package/dist-scalprum/plugin-manifest.json' \
+          tar -tzf "$archive" | grep -x 'package/dist-scalprum/plugin-manifest.json' > /dev/null \
             || fail "$(basename "$archive") has no package/dist-scalprum/plugin-manifest.json"
 
           container=$(podman create "$image" /bin/true)
-          podman export "$container" | tar -t | grep -q 'dist-scalprum/plugin-manifest.json$' \
+          podman export "$container" | tar -t | grep 'dist-scalprum/plugin-manifest.json$' > /dev/null \
             || fail "${image} has no dist-scalprum/plugin-manifest.json"
           podman rm "$container" > /dev/null
