@@ -1,0 +1,99 @@
+name: Test Export Frontend
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - export-dynamic/**
+      - .github/workflows/test-export-frontend.yaml
+
+env:
+  PLUGINS_REPO: veecode-platform/devportal-plugins
+  # veecode-homepage 1.0.4, a frontend plugin
+  PLUGINS_REPO_REF: cf4308a6d147b5e5e2e1ea08c9677028c0d492fe
+  PLUGINS_ROOT: workspaces/veecode-homepage
+  PLUGIN_PATH: plugins/veecode-homepage
+  PLUGIN_NAME: veecode-platform-plugin-veecode-homepage
+  IMAGE_REPOSITORY_PREFIX: localhost/export-test
+
+jobs:
+  test-export-frontend:
+    name: Test Export (frontend plugin ships dist-scalprum)
+    runs-on: ubuntu-24.04
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: export-utils
+
+      - name: Setup Node.js 24.14.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24.14.0
+
+      - name: Checkout plugins repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.PLUGINS_REPO }}
+          ref: ${{ env.PLUGINS_REPO_REF }}
+          sparse-checkout: |
+            /*
+            !/workspaces/
+            ${{ env.PLUGINS_ROOT }}
+            workspaces/repo-tools/
+          sparse-checkout-cone-mode: false
+          path: source-repo
+
+      - name: Write plugins list
+        run: |
+          mkdir -p "$RUNNER_TEMP/overlay"
+          echo "${PLUGIN_PATH}:" > "$RUNNER_TEMP/overlay/plugins-list.yaml"
+
+      - name: Install required native libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Install and type-check the workspace
+        working-directory: source-repo/${{ env.PLUGINS_ROOT }}
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn tsc
+
+      - name: Run Export Dynamic
+        id: export
+        uses: ./export-utils/export-dynamic
+        with:
+          plugins-root: source-repo/${{ env.PLUGINS_ROOT }}
+          plugins-file: ${{ runner.temp }}/overlay/plugins-list.yaml
+          destination: ${{ runner.temp }}/archives
+          janus-cli-version: 1.11.2
+          cli-package: "@red-hat-developer-hub/cli"
+          image-repository-prefix: ${{ env.IMAGE_REPOSITORY_PREFIX }}
+          push-container-image: "false"
+
+      - name: Verify dist-scalprum in the folder, the archive and the image
+        env:
+          FAILED_EXPORTS: ${{ steps.export.outputs.failed-exports }}
+          PUBLISHED_EXPORTS: ${{ steps.export.outputs.published-exports }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          distDynamic="source-repo/${PLUGINS_ROOT}/${PLUGIN_PATH}/dist-dynamic"
+          version=$(jq -r '.version' "source-repo/${PLUGINS_ROOT}/${PLUGIN_PATH}/package.json")
+          image="${IMAGE_REPOSITORY_PREFIX}/${PLUGIN_NAME}:${version}"
+
+          ls -la "$distDynamic"
+          [[ -z "${FAILED_EXPORTS//[[:space:]]/}" ]] || fail "Failed exports: ${FAILED_EXPORTS}"
+          [[ "${PUBLISHED_EXPORTS}" == *"${image}"* ]] || fail "Image ${image} missing from published exports: ${PUBLISHED_EXPORTS}"
+          [[ -f "${distDynamic}/dist-scalprum/plugin-manifest.json" ]] || fail "${distDynamic}/dist-scalprum/plugin-manifest.json not found"
+
+          archive=$(ls "$RUNNER_TEMP"/archives/*.tgz)
+          tar -tzf "$archive" | grep -qx 'package/dist-scalprum/plugin-manifest.json' \
+            || fail "$(basename "$archive") has no package/dist-scalprum/plugin-manifest.json"
+
+          container=$(podman create "$image" /bin/true)
+          podman export "$container" | tar -t | grep -q 'dist-scalprum/plugin-manifest.json$' \
+            || fail "${image} has no dist-scalprum/plugin-manifest.json"
+          podman rm "$container" > /dev/null
