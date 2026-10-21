@@ -59,6 +59,11 @@ inputs:
     default: ""
     required: false
 
+  push-container-image:
+    description: Push the packaged container images. Set to false to only build them locally.
+    default: "true"
+    required: false
+
   last-publish-commit:
     description: Optional commit ID of the last successful publishing of plugin container images
     default: ""
@@ -122,7 +127,7 @@ runs:
         INPUTS_SOURCE_PATCH_FILE_NAME: "${{ inputs.source-patch-file-name }}"
         INPUTS_IMAGE_REPOSITORY_PREFIX: "${{ inputs.image-repository-prefix }}"
         INPUTS_IMAGE_TAG_PREFIX: "${{ inputs.image-tag-prefix }}"
-        INPUTS_PUSH_CONTAINER_IMAGE: "true"
+        INPUTS_PUSH_CONTAINER_IMAGE: "${{ inputs.push-container-image }}"
         INPUTS_LAST_PUBLISH_COMMIT: "${{ inputs.last-publish-commit }}"
         INPUTS_BUNDLE_WORKSPACE: "${{ inputs.bundle-workspace }}"
         INPUTS_ALSO_PUBLISH_PLUGINS: "${{ inputs.also-publish-plugins }}"

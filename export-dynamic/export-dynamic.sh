@@ -46,9 +46,12 @@ fi
 # config.d.ts files importing source-only paths (e.g. backstage-plugin-theme <=0.14.9)
 # and broke previously-green exports. Installing the pin alongside the CLI makes npm
 # dedupe the CLI's own dependency to the pinned version.
+# schema-utils >=4.8.0 (2026-10-18) peers on webpack ^5.112.0, which makes npm add a
+# second webpack next to the one the CLI pins. With two copies the Scalprum build stops
+# without an error, the CLI exits 0, and frontend plugins ship an empty dist-scalprum.
 if [[ "${INPUTS_CLI_PACKAGE}" == "@red-hat-developer-hub/cli" ]]
 then
-    INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes --package=@backstage/config-loader@1.10.12 --package=${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION} -- rhdh-cli"}
+    INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes --package=@backstage/config-loader@1.10.12 --package=schema-utils@4.7.0 --package=${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION} -- rhdh-cli"}
 else
     INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes ${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION}"}
 fi
@@ -65,7 +68,7 @@ run_cli() {
     # use @ not * to ignore newlines and show array values as a single line
     # shellcheck disable=SC2145
     echo "  > ${cli_bin[@]} ${cli_args_split[@]}"
-    # suppress logging unless an error occurs; then dump full log for debugging purposes
+    # fold the log on success (the CLI can exit 0 after a partial build); dump it in full on error
     # we WANT cli_args to split by spaces here
     # shellcheck disable=SC2068
     if ! "${cli_bin[@]}" ${cli_args_split[@]} >/tmp/export-dynamic-cli.log 2>&1; then
@@ -84,6 +87,9 @@ run_cli() {
         done
         return 1
     fi
+    echo "::group::CLI output"
+    cat /tmp/export-dynamic-cli.log
+    echo "::endgroup::"
     rm -f /tmp/export-dynamic-cli.log
     return 0
 }
@@ -251,6 +257,16 @@ else
                '.backstage["supported-versions"] = $ver' \
                dist-dynamic/package.json > dist-dynamic/package.json.tmp \
                && mv dist-dynamic/package.json.tmp dist-dynamic/package.json
+        fi
+
+        if [[ "${pluginType}" == "frontend" ]] && [[ "${INPUTS_CLI_PACKAGE}" == "@red-hat-developer-hub/cli" ]] \
+            && [[ "$args" != *"--no-generate-scalprum-assets"* ]] && [[ ! -f "dist-dynamic/dist-scalprum/plugin-manifest.json" ]]
+        then
+            echo "::error title=Missing Scalprum assets::${pluginPath}: the CLI exited 0 but dist-dynamic/dist-scalprum/plugin-manifest.json was not generated"
+            errors+=("${pluginPath}")
+            set -e
+            popd > /dev/null
+            continue
         fi
         echo
 
