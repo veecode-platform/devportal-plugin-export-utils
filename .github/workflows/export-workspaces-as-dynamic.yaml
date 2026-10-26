@@ -189,7 +189,7 @@ jobs:
         run: |
           versions=$(cat versions.json)
 
-          NODE_VERSION=$(echo ${versions} | jq -r "if (\"${INPUT_NODE_VERSION}\" == \"\") then (.node // \"20.x\") else \"${INPUT_NODE_VERSION}\" end")
+          NODE_VERSION=$(echo ${versions} | jq -r "if (\"${INPUT_NODE_VERSION}\" == \"\") then (.node // \"24.x\") else \"${INPUT_NODE_VERSION}\" end")
           echo "NODE_VERSION=${NODE_VERSION}" >> $GITHUB_OUTPUT
 
           JANUS_CLI_VERSION=$(echo ${versions} | jq -r "if (\"${INPUT_JANUS_CLI_VERSION}\" == \"\") then (.cli // \"^3.0.0\") else \"${INPUT_JANUS_CLI_VERSION}\" end")
