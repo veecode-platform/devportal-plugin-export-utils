@@ -364,6 +364,7 @@ jobs:
 
       - name: Set artifacts name suffix
         id: set-artifacts-name-suffix
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           INPUT_OVERLAY_ROOT: ${{ inputs.overlay-root }}
