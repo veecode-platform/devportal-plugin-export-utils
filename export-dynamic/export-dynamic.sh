@@ -56,6 +56,12 @@ else
     INPUTS_CLI_CALLER=${INPUTS_CLI_CALLER:-"npx --yes ${INPUTS_CLI_PACKAGE}@${INPUTS_CLI_VERSION}"}
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=export-dynamic/pack-dist-dynamic.sh
+source "${SCRIPT_DIR}/pack-dist-dynamic.sh"
+# shellcheck source=export-dynamic/validate-plugin-payload.sh
+source "${SCRIPT_DIR}/validate-plugin-payload.sh"
+
 # Check local installation first, then fall back to npx --yes (requires network)
 run_cli() {
     local cli_args=("$@")
@@ -151,6 +157,9 @@ package_and_push_plugin() {
     if run_cli "${PACKAGE_COMMAND[@]}" --tag "${plugin_container_tag}"; then
         if ! dynamic_packages_annotation_ok "${plugin_container_tag}" "${plugin_name}"; then
             error_array_ref+=("${pluginPath}")
+        elif ! assert_local_plugin_image "${plugin_container_tag}"; then
+            echo " Error: packaged image has no installable payload for ${pluginPath}"
+            error_array_ref+=("${pluginPath}")
         elif [[ "${INPUTS_PUSH_CONTAINER_IMAGE}" == "true" ]]
         then
             echo "========== Publishing Container ${plugin_container_tag} =========="
@@ -193,6 +202,10 @@ else
         if [[ "$overlay_supported_version" == "null" ]]; then
             overlay_supported_version=""
         fi
+    fi
+
+    if [[ -n "${INPUTS_IMAGE_REPOSITORY_PREFIX}" ]]; then
+        _require_skopeo
     fi
 
     # We use '|| [[ -n "$plugin" ]]' to catch the last line even if it lacks a newline.
@@ -268,9 +281,26 @@ else
             popd > /dev/null
             continue
         fi
+
+        # Validate backstage.features for frontend plugins (NFS readiness)
+        if [[ "$pluginType" == "frontend" ]] && [[ -f "dist-dynamic/package.json" ]]; then
+            features=$(jq -c '.backstage.features // {}' dist-dynamic/package.json 2>/dev/null || echo '{}')
+            if [[ "$features" == "{}" || "$features" == "null" || -z "$features" ]]; then
+                echo "  ⚠️  backstage.features is missing or empty — plugin may not be NFS-ready"
+            else
+                echo "  ✅ backstage.features: $features"
+            fi
+        fi
+
+        if ! assert_dist_dynamic_payload "$(pwd)/dist-dynamic"; then
+            echo " Error: empty or incomplete dist-dynamic export for ${pluginPath}"
+            errors+=("${pluginPath}")
+            set -e
+            popd > /dev/null
+            continue
+        fi
         echo
 
-        # package the dynamic plugin in a container image
         if [[ "${INPUTS_IMAGE_REPOSITORY_PREFIX}" != "" ]]
         then
             PLUGIN_NAME=$(jq -r '.name | sub("^@"; "") | sub("[/@]"; "-")' package.json)
@@ -304,8 +334,8 @@ else
             packDestination=${INPUTS_DESTINATION}
             mkdir -pv "${packDestination}"
 
-            echo "  running npm pack on the exported './dist-dynamic' sub-folder"
-            if ! json=$(npm pack ./dist-dynamic --pack-destination "$packDestination" --json); then
+            echo "  running npm pack on a hardlink-free copy of './dist-dynamic'"
+            if ! json=$(pack_dist_dynamic "$(pwd)/dist-dynamic" "$packDestination"); then
                 errors+=("${pluginPath}")
                 set -e
                 popd > /dev/null

@@ -179,6 +179,17 @@ jobs:
           ref: ${{ steps.set-overlay-repo-ref.outputs.OVERLAY_REPO_REF }}
           repository:  ${{ steps.set-overlay-repo.outputs.OVERLAY_REPO }}
 
+      # github.job_workflow_sha is this reusable workflow's commit — do not use
+      # GITHUB_WORKFLOW_REF (caller branch, e.g. overlays release-1.10). RHDHBUGS-3554
+      - name: Checkout export-utils compatibility helpers
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: veecode-platform/devportal-plugin-export-utils
+          ref: ${{ github.job_workflow_sha }}
+          path: _export-utils
+          sparse-checkout: common/scripts/backstage-version-compatible.sh
+          sparse-checkout-cone-mode: false
+
       - name: Set environment variables
         id: set-env-vars
         shell: bash {0}
@@ -221,6 +232,9 @@ jobs:
           fi
           echo ""
 
+          # shellcheck source=common/scripts/backstage-version-compatible.sh
+          source _export-utils/common/scripts/backstage-version-compatible.sh
+
           workspacePath=''
           if [[ "${INPUT_WORKSPACE_PATH}" != "" ]]
           then
@@ -252,11 +266,11 @@ jobs:
                   workspaceBackstageVersion=$(jq -r '.version' "${d}/backstage.json")
                 fi
 
-                # Use bs_<target>__ prefix only when this workspace is compatible
-                # with the target backstage version (semver tilde range match)
+                # Use bs_<target>__ prefix only for same major.minor (exact).
+                # Best-effort (older minor) workspaces keep next__ until overridden.
                 wsTagPrefix="next__"
                 if [[ "${workspaceBackstageVersion}" != "" ]] && \
-                   [[ "${TARGET_BACKSTAGE_VERSION}" == "$(semver -r "~${workspaceBackstageVersion}" "${TARGET_BACKSTAGE_VERSION}")" ]]
+                   backstage_versions_minor_match "${workspaceBackstageVersion}" "${TARGET_BACKSTAGE_VERSION}"
                 then
                   wsTagPrefix="bs_${TARGET_BACKSTAGE_VERSION}${RC_TAG_SUFFIX}__"
                 fi
